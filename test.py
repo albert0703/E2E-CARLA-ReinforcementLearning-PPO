@@ -36,7 +36,7 @@ def game_loop(args):
         world = Monitor(world, logdir)
         world.reset()
 
-        model = RecurrentPPO.load(f"F:/E2E-CARLA-ReinforcementLearning-PPO/logs/{run}/best_model.zip", env=world, print_system_info=True)
+        model = RecurrentPPO.load(f"D:/MLFinal/logs/1740270407/best_model.zip", env=world, print_system_info=True)
 
         mean_reward, std_reward = evaluate_policy(model, model.get_env(), n_eval_episodes=100)
 

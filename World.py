@@ -51,6 +51,7 @@ class World(gym.Env):
         self.ttc_trigger = 1.0
         self.episode_counter = 0
         self.steer = 0
+        self.last_steer = 0
         self.save_list = []
         # self.file_name = 'F:/E2E-CARLA-ReinforcementLearning-PPO/logs/1709073714-working-50kmh/evaluation/logger.csv'
         self.logger = False
@@ -164,10 +165,7 @@ class World(gym.Env):
                     pass
 
 
-
     def step(self, action):
-
-
         self.reward = 0
         done = False
         cos_yaw_diff = 0
@@ -177,69 +175,55 @@ class World(gym.Env):
         traveled = 0
 
         if action is not None:
-
             self.counter += 1
             self.global_t += 1
 
-            
             self.clock.tick_busy_loop(self.args.FPS)
-            
+
             if self.apply_vehicle_control(action):
                 return
-            
-            
-            
+
             snapshot, image_rgb, lane, collision = self.synch_mode.tick(timeout=10.0)
-            
-            
             self.get_observation()
 
-
-            cos_yaw_diff, dist, collision, lane, traveled = self.get_reward_comp(self.player, self.spawn_waypoint, collision, lane)
+            cos_yaw_diff, dist, collision, lane, traveled,current_speed,jitter= self.get_reward_comp(self.player, self.spawn_waypoint, collision, lane)
             
             
-            self.reward = self.reward_value(cos_yaw_diff, dist, collision, lane, traveled)
-     
+            self.reward = self.reward_value(cos_yaw_diff, dist, collision, lane, traveled, 
+                                            current_speed, jitter)
             self.episode_reward += self.reward
 
             if image_rgb is not None:
                 image = process_img2(self, image_rgb)
-                    
-            
-            if dist > self.max_dist:
-                done=True
 
+            if dist > self.max_dist:
+                done = True
 
             vehicle_location = self.player.get_location()
             y_vh = vehicle_location.y
-            if y_vh > float(self.args.spawn_y)+self.distance_parked+15:
+            if y_vh > float(self.args.spawn_y) + self.distance_parked + 15:
                 self.reward += 50
                 print("episode ended by reaching goal position")
-                done=True
-
+                done = True
 
             truncated = False
- 
 
             if collision == 1:
-                done=True
+                done = True
                 print("Episode ended by collision")
-            
+                
             if lane == 1:
                 done = True
                 self.reward -= 50
                 print("Episode ended by lane invasion")
-    
+        
             if dist > self.max_dist:
-                done=True
+                done = True
                 self.reward -= 50
-                print(f"Episode  ended with dist from waypoint: {dist}")
+                print(f"Episode ended with dist from waypoint: {dist}")
 
-            velocity_vec_st = self.player.get_velocity()
-            current_speed = math.sqrt(velocity_vec_st.x**2 + velocity_vec_st.y**2 + velocity_vec_st.z**2)
             if current_speed < 0.1:
-                done=True
-                
+                done = True
 
         return image, self.reward, done, truncated, {}
     
@@ -278,16 +262,41 @@ class World(gym.Env):
         traveled = y_vh - self.last_y
         # print(traveled)
  
-
-
         # finish = 1 if y_vh > -40 else 0
         
-        return cos_yaw_diff, dist, collision, lane, traveled
+        ######
+        velocity = vehicle.get_velocity()
+        current_speed = math.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2)
+
+        # Compute jitter: the change in steering since the last time step.
+        current_control = vehicle.get_control()
+        current_steer = current_control.steer
+        jitter = abs(current_steer - self.last_steer)
+        # Update last steering value for next step
+        self.last_steer = current_steer
+
+        # Return additional components for use in reward calculation:
+        # cos_yaw_diff, distance, collision, lane, traveled, current_speed, jitter
+        return cos_yaw_diff, dist, collision, lane, traveled, current_speed, jitter
     
-    def reward_value(self, cos_yaw_diff, dist, collision, lane, traveled, lambda_1=1, lambda_2=1, lambda_3=100, lambda_4=5, lambda_5=0.5):
-    
-        reward = (lambda_1 * cos_yaw_diff) - (lambda_2 * dist) - (lambda_3 * collision) - (lambda_4 * lane) + (lambda_5 * traveled)
+    def reward_value(self, cos_yaw_diff, dist, collision, lane, traveled, 
+                 current_speed, jitter,
+                 lambda_1=1, lambda_2=1, lambda_3=100, lambda_4=5, 
+                 lambda_5=0.5, lambda_6=10, lambda_7=1):
         
+        #desired_speed_value
+        desired_speed = 0
+        # Penalty for being below desired speed
+        speed_penalty = max(0, desired_speed - current_speed)
+        
+        reward = (lambda_1 * cos_yaw_diff) \
+                - (lambda_2 * dist) \
+                - (lambda_3 * collision) \
+                - (lambda_4 * lane) \
+                + (lambda_5 * traveled) \
+                - (lambda_6 * speed_penalty) \
+                - (lambda_7 * jitter)
+                
         return reward
     
 

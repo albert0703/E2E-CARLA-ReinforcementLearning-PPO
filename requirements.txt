@@ -6,7 +6,6 @@ AutoROM.accept-rom-license==0.6.1
 backcall==0.2.0
 beautifulsoup4==4.12.3
 cachetools==5.3.2
-carla==0.9.12
 casadi==3.5.5
 certifi==2023.11.17
 chardet==5.2.0
