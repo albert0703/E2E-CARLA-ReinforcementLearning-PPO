@@ -1,0 +1,13 @@
+# Unreal Engine generated folders
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Visual Studio files
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.ipch
+*.log
