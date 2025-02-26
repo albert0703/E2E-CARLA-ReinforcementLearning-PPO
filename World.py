@@ -469,6 +469,31 @@ class World(gym.Env):
             attach_to=self.player)
         self.world.tick()
         
+        # RADAR SENSOR
+        self.radar_bp = self.blueprint_library.find('sensor.other.radar')
+        # Optionally, you can set radar attributes (modify as needed)
+        self.radar_bp.set_attribute("horizontal_fov", "30")
+        self.radar_bp.set_attribute("vertical_fov", "30")
+        self.radar_bp.set_attribute("range", "50")
+        # Define a transform for the radar sensor relative to the vehicle
+        radar_transform = carla.Transform(carla.Location(x=2, z=1), carla.Rotation(pitch=0, yaw=0, roll=0))
+        self.radar_sensor = self.world.spawn_actor(self.radar_bp, radar_transform, attach_to=self.player)
+        self.world.tick()
+        print('Radar sensor spawned')
+        
+        # LIDAR SENSOR
+        self.lidar_bp = self.blueprint_library.find('sensor.lidar.ray_cast')
+        # Optionally, set lidar attributes (adjust as needed)
+        self.lidar_bp.set_attribute("range", "50")
+        self.lidar_bp.set_attribute("rotation_frequency", "10")
+        self.lidar_bp.set_attribute("channels", "32")
+        self.lidar_bp.set_attribute("points_per_second", "56000")
+        # Define a transform for the lidar sensor relative to the vehicle
+        lidar_transform = carla.Transform(carla.Location(x=0, z=2), carla.Rotation(pitch=0, yaw=0, roll=0))
+        self.lidar_sensor = self.world.spawn_actor(self.lidar_bp, lidar_transform, attach_to=self.player)
+        self.world.tick()
+        print('Lidar sensor spawned')
+        
         # SYNCH MODE CONTEXT
 
         self.synch_mode = CarlaSyncMode(self.world, self.camera_rgb, self.lane_invasion, self.collision_sensor)
