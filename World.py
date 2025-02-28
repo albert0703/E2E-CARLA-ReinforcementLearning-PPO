@@ -11,7 +11,7 @@ from gymnasium import spaces
 from Utils.HUD import HUD as HUD
 from Utils.CubicSpline.cubic_spline_planner import *
 import csv
-
+import random
 
 
 class World(gym.Env):
@@ -36,6 +36,9 @@ class World(gym.Env):
         self.episode_reward = 0
         self.player = None
         self.parked_vehicle = None
+        self.moving_vehicle1 = None
+        self.moving_vehicle2 = None
+        self.walker = None
         self.collision_sensor = None
         self.camera_rgb = None
         self.lane_invasion = None
@@ -154,7 +157,10 @@ class World(gym.Env):
             self.collision_sensor,
             self.camera_rgb,
             self.lane_invasion,
-            self.parked_vehicle]        
+            self.parked_vehicle,
+            self.moving_vehicle1,
+            self.moving_vehicle2,
+            self.walker]        
                            
         for actor in actors:
             if actor is not None:
@@ -466,12 +472,39 @@ class World(gym.Env):
         # SYNCH MODE CONTEXT
 
         self.synch_mode = CarlaSyncMode(self.world, self.camera_rgb, self.lane_invasion, self.collision_sensor)
-
+        
         # STATIONARY CAR
-
-        parking_position = carla.Transform(self.player.get_transform().location + carla.Location(-0.5, self.distance_parked, 0.5), 
+        
+        parking_position = carla.Transform(self.player.get_transform().location + carla.Location(0.5, self.distance_parked, 0), 
                                 carla.Rotation(0,90,0))
-        self.parked_vehicle = self.world.spawn_actor(self.vehicle_blueprint.filter('model3')[0], parking_position)
+        parked_vehicle_bp = random.choice(self.blueprint_library.filter('vehicle.*'))
+        self.parked_vehicle = self.world.spawn_actor(parked_vehicle_bp, parking_position)
+        self.world.tick()
+        
+        # MOVING CARS
+        
+        lanes = [3.7, 7.3, 10.7]
+        moving_vehicle1_position = carla.Transform(self.player.get_transform().location + carla.Location(random.choice(lanes), self.distance_parked - random.randint(15, 25), 0), 
+                                carla.Rotation(0,90,0))
+        moving_vehicle1_bp = random.choice(self.blueprint_library.filter('*vehicle*'))
+        self.moving_vehicle1 = self.world.spawn_actor(moving_vehicle1_bp, moving_vehicle1_position)
+        self.moving_vehicle1.apply_control(carla.VehicleControl(throttle = random.uniform(0.7, 0.8)))
+        self.world.tick()
+        
+        moving_vehicle2_position = carla.Transform(self.player.get_transform().location + carla.Location(random.choice(lanes), self.distance_parked - random.randint(40, 50), 0), 
+                                carla.Rotation(0,90,0))
+        moving_vehicle2_bp = random.choice(self.blueprint_library.filter('*vehicle*'))
+        self.moving_vehicle2 = self.world.spawn_actor(moving_vehicle2_bp, moving_vehicle2_position)
+        self.moving_vehicle2.apply_control(carla.VehicleControl(throttle = random.uniform(0.5, 0.6)))
+        self.world.tick()
+        
+        # WALKER
+        
+        walker_position = carla.Transform(self.player.get_transform().location + carla.Location(-3, self.distance_parked - random.randint(10, 25), 0), 
+                                carla.Rotation(0,90,0))
+        walker_bp = random.choice(self.blueprint_library.filter('*walker.*'))
+        self.walker = self.world.spawn_actor(walker_bp, walker_position)
+        self.walker.apply_control(carla.WalkerControl(direction = carla.Vector3D(x=random.uniform(0.3, 0.5), y=random.uniform(-1, 1), z=0), speed = 1))
         self.world.tick()
 
         # SPECTATOR
