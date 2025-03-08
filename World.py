@@ -134,7 +134,7 @@ class World(gym.Env):
 
             self.get_observation()
             #if want Third person view
-            self.update_spectator_camera()
+            #self.update_spectator_camera()
 
             if image_rgb is not None:
                 img = process_img2(self, image_rgb)
