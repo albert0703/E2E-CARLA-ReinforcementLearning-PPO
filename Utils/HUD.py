@@ -13,6 +13,8 @@ class HUD(object):
     def get_simulation_information(self):
         return self.frame, self.simulation_time
 
+
+
     # def tick(self, world, clock):
     #     self._notifications.tick(world, clock)
     #     if not self._show_info:

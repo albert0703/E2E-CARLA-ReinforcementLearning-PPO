@@ -8,7 +8,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 from sb3_contrib import RecurrentPPO
 
-run = '1709073714-working-50kmh'
+run = 'attempt_3'
 logdir = f"logs/{run}/evaluation/"
 
 if not os.path.exists(logdir):
@@ -36,7 +36,7 @@ def game_loop(args):
         world = Monitor(world, logdir)
         world.reset()
 
-        model = RecurrentPPO.load(f"D:/MLFinal/logs/1740270407/best_model.zip", env=world, print_system_info=True)
+        model = RecurrentPPO.load(f"D:/ML/logs/attempt_3_directly_train_jitter/best_model.zip", env=world, print_system_info=True)
 
         mean_reward, std_reward = evaluate_policy(model, model.get_env(), n_eval_episodes=100)
 

@@ -21,7 +21,7 @@ def process_img(image, dim_x=128, dim_y=128):
     resized_img = cv2.resize(array, dim, interpolation=cv2.INTER_AREA)
     img_gray = cv2.cvtColor(resized_img, cv2.COLOR_BGR2GRAY)
     scaledImg = img_gray/255.
-
+    cv2.imwrite(f'D:/temp/0.png', resized_img)
     # normalize
     mean, std = 0.5, 0.5
     normalizedImg = (scaledImg - mean) / std
@@ -103,7 +103,7 @@ def process_img2(self, image,  dim_x=128, dim_y=128):
 
         dim = (dim_x, dim_y)  # set same dim for now
         resized_img = cv2.resize(img_gray, dim, interpolation=cv2.INTER_AREA)
-        # cv2.imwrite(f'F:/E2E-CARLA-ReinforcementLearning-PPO/_out/resized/{self.global_t}.png', resized_img)
+        #cv2.imwrite(f'D:/temp/{self.global_t}.png', resized_img)
         
         scaledImg = resized_img/255.
 
@@ -127,7 +127,44 @@ def process_img2(self, image,  dim_x=128, dim_y=128):
         shap = x[:, :, np.newaxis]
         arr = shap.astype('uint8')
         return arr
+def process_img_test(self, image,  dim_x=128, dim_y=128):
+
+    if image is not None:
+        i = np.array(image.raw_data)
+        #print(i.shape)
+        i2 = i.reshape((self.im_height, self.im_width, 4))
+        i3 = i2[:, :, :3]
+        # cv2.imwrite(f'F://E2E-CARLA-ReinforcementLearning-PPO/_out/ground/{self.global_t}.png', i3)
+
+        img_gray = cv2.cvtColor(i3, cv2.COLOR_BGR2GRAY)
+        # cv2.imwrite(f'./_out/gray/{self.global_t}.png', img_gray)
+
+        dim = (dim_x, dim_y)  # set same dim for now
+        resized_img = cv2.resize(img_gray, dim, interpolation=cv2.INTER_AREA)
+        cv2.imwrite(f'D:/temp/{self.global_t}.png', resized_img)
+        
+        scaledImg = resized_img/255.
+
+        # normalize
+        mean, std = 0.5, 0.5
+        normalizedImg = (scaledImg - mean) / std
+
+
+        xx = np.matrix(resized_img)
+        # print (xx.max())
+        # print (xx.min())
+        # print(scaledImg)
+
+        shap = xx[:, :, np.newaxis]
+        # print(shap.shape)
+
+        return np.array(shap)
     
+    else:
+        x = np.zeros((128,128))
+        shap = x[:, :, np.newaxis]
+        arr = shap.astype('uint8')
+        return arr
 
 def draw_image(surface, image, blend=False):
     array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))

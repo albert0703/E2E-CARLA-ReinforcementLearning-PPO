@@ -41,6 +41,9 @@ class World(gym.Env):
         self.walker = None
         self.collision_sensor = None
         self.camera_rgb = None
+        self.camera_rgb2 = None
+        self.camera_rgb3 = None
+        self.camera_rgb4 = None
         self.lane_invasion = None
         self._autopilot_enabled = False
         self._control = carla.VehicleControl()
@@ -61,7 +64,7 @@ class World(gym.Env):
 
         ## RL STABLE BASELINES
         self.action_space = spaces.Box(low=-1, high=1,shape=(2,),dtype="float")
-        self.observation_space = spaces.Box(low=-0, high=255, shape=(128, 128, 1), dtype=np.uint8)
+        self.observation_space = spaces.Box(low=-0, high=255, shape=(128, 128, 4), dtype=np.uint8)
 
 
         self.global_t = 0 # global timestep
@@ -127,27 +130,51 @@ class World(gym.Env):
 
             ttc = self.time_to_collison()
    
-            snapshot, image_rgb, lane, collision = self.synch_mode.tick(timeout=10.0)
+            snapshot, image_rgb,image_rgb2,image_rgb3,image_rgb4, lane, collision = self.synch_mode.tick(timeout=10.0)
 
             self.get_observation()
-
+            #if want Third person view
+            self.update_spectator_camera()
 
             if image_rgb is not None:
                 img = process_img2(self, image_rgb)
-           
-  
+            if image_rgb2 is not None:
+                img2 = process_img2(self, image_rgb2)
+            if image_rgb3 is not None:
+                img3 = process_img2(self, image_rgb3)
+            if image_rgb4 is not None:
+                img4 = process_img2(self, image_rgb4)
 
+        stacked_img = np.concatenate([img, img2, img3,img4], axis=2)
         last_transform = self.player.get_transform()
         last_location = last_transform.location
         self.last_y = last_location.y
         self.last_v = current_speed
         print(current_speed)
 
-        return img, {}
+        return stacked_img,{}
 
+    def update_spectator_camera(self):
+        spectator = self.world.get_spectator()
+        player_transform = self.player.get_transform()
+        # Define an offset: behind the vehicle and a bit above.
+        offset = carla.Location(x=-5, z=2.5)
+        # Get the new location by transforming the offset from local to world coordinates.
+        new_location = player_transform.transform(offset)
+        # Set the new rotation, for instance, a slight downward pitch.
+        new_rotation = carla.Rotation(
+            pitch=player_transform.rotation.pitch - 10,
+            yaw=player_transform.rotation.yaw,
+            roll=0
+        )
+        # Create a new Transform object with the new location and rotation.
+        spectator_transform = carla.Transform(new_location, new_rotation)
+        # Apply the transform to the spectator.
+        spectator.set_transform(spectator_transform)
 
     def tick(self, clock):
         self.hud.tick(self, clock)
+        
 
     def destroy(self):
         self.world.tick()
@@ -156,6 +183,9 @@ class World(gym.Env):
             self.player,
             self.collision_sensor,
             self.camera_rgb,
+            self.camera_rgb2,
+            self.camera_rgb3,
+            self.camera_rgb4,
             self.lane_invasion,
             self.parked_vehicle,
             self.moving_vehicle1,
@@ -189,9 +219,10 @@ class World(gym.Env):
             if self.apply_vehicle_control(action):
                 return
 
-            snapshot, image_rgb, lane, collision = self.synch_mode.tick(timeout=10.0)
+            snapshot, image_rgb,image_rgb2,image_rgb3,image_rgb4, lane, collision = self.synch_mode.tick(timeout=10.0)
             self.get_observation()
-
+            #if want Third person view
+            #self.update_spectator_camera()
             cos_yaw_diff, dist, collision, lane, traveled,current_speed,jitter= self.get_reward_comp(self.player, self.spawn_waypoint, collision, lane)
             
             
@@ -200,7 +231,15 @@ class World(gym.Env):
             self.episode_reward += self.reward
 
             if image_rgb is not None:
-                image = process_img2(self, image_rgb)
+                img = process_img2(self, image_rgb)
+            if image_rgb2 is not None:
+                img2 = process_img2(self, image_rgb2)
+            if image_rgb3 is not None:
+                img3 = process_img2(self, image_rgb3)
+            if image_rgb4 is not None:
+                img4 = process_img2(self, image_rgb4)
+            stacked_img = np.concatenate([img, img2, img3,img4], axis=2)
+                
 
             if dist > self.max_dist:
                 done = True
@@ -231,7 +270,7 @@ class World(gym.Env):
             if current_speed < 0.1:
                 done = True
 
-        return image, self.reward, done, truncated, {}
+        return stacked_img, self.reward, done, truncated, {}
     
 
 
@@ -300,8 +339,8 @@ class World(gym.Env):
                 - (lambda_3 * collision) \
                 - (lambda_4 * lane) \
                 + (lambda_5 * traveled) \
-                - (lambda_6 * speed_penalty) \
-                - (lambda_7 * jitter)
+                #- (lambda_6 * speed_penalty) \
+                #- (lambda_7 * jitter)
                 
         return reward
     
@@ -441,7 +480,7 @@ class World(gym.Env):
         current_lights |= carla.VehicleLightState.Position
         self.player.set_light_state(carla.VehicleLightState.Position)
 
-        # CAMERA RGB
+        # CAMERA RGB 1
 
         self.rgb_cam = self.blueprint_library.find('sensor.camera.rgb')
         self.rgb_cam.set_attribute("image_size_x", f"{640}")
@@ -450,6 +489,41 @@ class World(gym.Env):
         self.camera_rgb = self.world.spawn_actor(
             self.rgb_cam,
             carla.Transform(carla.Location(x=2, z=1), carla.Rotation(0,0,0)),
+            attach_to=self.player)
+        self.world.tick()
+
+        # CAMERA RGB 2
+
+        self.rgb_cam2 = self.blueprint_library.find('sensor.camera.rgb')
+        self.rgb_cam2.set_attribute("image_size_x", f"{640}")
+        self.rgb_cam2.set_attribute("image_size_y", f"{480}")
+        self.rgb_cam2.set_attribute("fov", f"120")
+        self.camera_rgb2 = self.world.spawn_actor(
+            self.rgb_cam2,
+            carla.Transform(carla.Location(x=0, y =1, z=1), carla.Rotation(0,90,0)),
+            attach_to=self.player)
+        self.world.tick()
+        # # CAMERA RGB 3
+
+        self.rgb_cam3 = self.blueprint_library.find('sensor.camera.rgb')
+        self.rgb_cam3.set_attribute("image_size_x", f"{640}")
+        self.rgb_cam3.set_attribute("image_size_y", f"{480}")
+        self.rgb_cam3.set_attribute("fov", f"120")
+        self.camera_rgb3 = self.world.spawn_actor(
+            self.rgb_cam3,
+            carla.Transform(carla.Location(x=0,y = -1, z=1), carla.Rotation(0,-90,0)),
+            attach_to=self.player)
+        self.world.tick()
+
+        # # CAMERA RGB 4
+
+        self.rgb_cam4 = self.blueprint_library.find('sensor.camera.rgb')
+        self.rgb_cam4.set_attribute("image_size_x", f"{640}")
+        self.rgb_cam4.set_attribute("image_size_y", f"{480}")
+        self.rgb_cam4.set_attribute("fov", f"110")
+        self.camera_rgb4 = self.world.spawn_actor(
+            self.rgb_cam4,
+            carla.Transform(carla.Location(x=-3, z=1), carla.Rotation(0,180,0)),
             attach_to=self.player)
         self.world.tick()
 
@@ -469,34 +543,23 @@ class World(gym.Env):
             attach_to=self.player)
         self.world.tick()
         
-        # RADAR SENSOR
-        self.radar_bp = self.blueprint_library.find('sensor.other.radar')
-        # Optionally, you can set radar attributes (modify as needed)
-        self.radar_bp.set_attribute("horizontal_fov", "30")
-        self.radar_bp.set_attribute("vertical_fov", "30")
-        self.radar_bp.set_attribute("range", "50")
-        # Define a transform for the radar sensor relative to the vehicle
-        radar_transform = carla.Transform(carla.Location(x=2, z=1), carla.Rotation(pitch=0, yaw=0, roll=0))
-        self.radar_sensor = self.world.spawn_actor(self.radar_bp, radar_transform, attach_to=self.player)
-        self.world.tick()
-        print('Radar sensor spawned')
         
-        # LIDAR SENSOR
-        self.lidar_bp = self.blueprint_library.find('sensor.lidar.ray_cast')
-        # Optionally, set lidar attributes (adjust as needed)
-        self.lidar_bp.set_attribute("range", "50")
-        self.lidar_bp.set_attribute("rotation_frequency", "10")
-        self.lidar_bp.set_attribute("channels", "32")
-        self.lidar_bp.set_attribute("points_per_second", "56000")
-        # Define a transform for the lidar sensor relative to the vehicle
-        lidar_transform = carla.Transform(carla.Location(x=0, z=2), carla.Rotation(pitch=0, yaw=0, roll=0))
-        self.lidar_sensor = self.world.spawn_actor(self.lidar_bp, lidar_transform, attach_to=self.player)
-        self.world.tick()
-        print('Lidar sensor spawned')
+        # # LIDAR SENSOR
+        # self.lidar_bp = self.blueprint_library.find('sensor.lidar.ray_cast')
+        # # Optionally, set lidar attributes (adjust as needed)
+        # self.lidar_bp.set_attribute("range", "50")
+        # self.lidar_bp.set_attribute("rotation_frequency", "10")
+        # self.lidar_bp.set_attribute("channels", "32")
+        # self.lidar_bp.set_attribute("points_per_second", "56000")
+        # # Define a transform for the lidar sensor relative to the vehicle
+        # lidar_transform = carla.Transform(carla.Location(x=0, z=2), carla.Rotation(pitch=0, yaw=0, roll=0))
+        # self.lidar_sensor = self.world.spawn_actor(self.lidar_bp, lidar_transform, attach_to=self.player)
+        # self.world.tick()
+        # print('Lidar sensor spawned')
         
         # SYNCH MODE CONTEXT
 
-        self.synch_mode = CarlaSyncMode(self.world, self.camera_rgb, self.lane_invasion, self.collision_sensor)
+        self.synch_mode = CarlaSyncMode(self.world, self.camera_rgb,self.camera_rgb2,self.camera_rgb3,self.camera_rgb4, self.lane_invasion, self.collision_sensor)
         
         # STATIONARY CAR
         
@@ -508,28 +571,76 @@ class World(gym.Env):
         
         # MOVING CARS
         
+        # Define lane options (lateral offsets)
         lanes = [3.7, 7.3, 10.7]
-        moving_vehicle1_position = carla.Transform(self.player.get_transform().location + carla.Location(random.choice(lanes), self.distance_parked - random.randint(15, 25), 0), 
-                                carla.Rotation(0,90,0))
-        moving_vehicle1_bp = random.choice(self.blueprint_library.filter('*vehicle*'))
-        self.moving_vehicle1 = self.world.spawn_actor(moving_vehicle1_bp, moving_vehicle1_position)
-        self.moving_vehicle1.apply_control(carla.VehicleControl(throttle = random.uniform(0.7, 0.8)))
+
+        # ---------- MOVING VEHICLE 1 ----------
+        # Pick a random lane for vehicle 1.
+        lane1 = random.choice(lanes)
+        offset_y1 = self.distance_parked - random.randint(15, 25)
+        mv1_spawn_location = self.player.get_transform().location + carla.Location(x=lane1, y=offset_y1, z=0)
+        mv1_transform = carla.Transform(mv1_spawn_location, carla.Rotation(0, 90, 0))
+        mv1_bp = random.choice(self.blueprint_library.filter('*vehicle*'))
+        self.moving_vehicle1 = self.world.try_spawn_actor(mv1_bp, mv1_transform)
+        if self.moving_vehicle1 is not None:
+            self.moving_vehicle1.apply_control(carla.VehicleControl(throttle=random.uniform(0.7, 0.8)))
+        else:
+            print("Failed to spawn moving_vehicle1")
         self.world.tick()
-        
-        moving_vehicle2_position = carla.Transform(self.player.get_transform().location + carla.Location(random.choice(lanes), self.distance_parked - random.randint(40, 50), 0), 
-                                carla.Rotation(0,90,0))
-        moving_vehicle2_bp = random.choice(self.blueprint_library.filter('*vehicle*'))
-        self.moving_vehicle2 = self.world.spawn_actor(moving_vehicle2_bp, moving_vehicle2_position)
-        self.moving_vehicle2.apply_control(carla.VehicleControl(throttle = random.uniform(0.5, 0.6)))
+
+        # ---------- MOVING VEHICLE 2 ----------
+        # For vehicle 2, choose a different lane to avoid lateral collision.
+        remaining_lanes = [l for l in lanes if l != lane1]
+        lane2 = random.choice(remaining_lanes)
+
+        # We'll retry several times if needed to find a free spawn position.
+        min_y_distance = 10  # minimum desired separation in y between vehicle 1 and vehicle 2
+        mv2_spawned = False
+        attempts = 0
+        while not mv2_spawned and attempts < 5:
+            offset_y2 = self.distance_parked - random.randint(40, 50)
+            mv2_spawn_location = self.player.get_transform().location + carla.Location(x=lane2, y=offset_y2, z=0)
+            # If vehicle 1 exists, ensure enough separation along y:
+            if self.moving_vehicle1 is not None:
+                mv1_location = self.moving_vehicle1.get_transform().location
+                if abs(mv1_location.y - mv2_spawn_location.y) < min_y_distance:
+                    attempts += 1
+                    continue  # try a different offset
+            mv2_transform = carla.Transform(mv2_spawn_location, carla.Rotation(0, 90, 0))
+            mv2_bp = random.choice(self.blueprint_library.filter('*vehicle*'))
+            self.moving_vehicle2 = self.world.try_spawn_actor(mv2_bp, mv2_transform)
+            if self.moving_vehicle2 is not None:
+                self.moving_vehicle2.apply_control(carla.VehicleControl(throttle=random.uniform(0.5, 0.6)))
+                mv2_spawned = True
+            else:
+                attempts += 1
+                print(f"Attempt {attempts} failed for moving_vehicle2.")
+        if not mv2_spawned:
+            print("Could not spawn moving_vehicle2 without collision.")
         self.world.tick()
-        
-        # WALKER
-        
-        walker_position = carla.Transform(self.player.get_transform().location + carla.Location(-3, self.distance_parked - random.randint(10, 25), 0), 
-                                carla.Rotation(0,90,0))
-        walker_bp = random.choice(self.blueprint_library.filter('*walker.*'))
-        self.walker = self.world.spawn_actor(walker_bp, walker_position)
-        self.walker.apply_control(carla.WalkerControl(direction = carla.Vector3D(x=random.uniform(0.3, 0.5), y=random.uniform(-1, 1), z=0), speed = 1))
+
+        # ---------- WALKER ----------
+        # For the walker, choose a lateral offset that is clearly different from the vehicle lanes.
+        walker_spawned = False
+        walker_attempts = 0
+        while not walker_spawned and walker_attempts < 10:
+            # Here we choose an offset that is unlikely to conflict (for example, farther from the vehicles).
+            walker_lane_offset = random.choice([0, 5])
+            walker_offset_y = self.distance_parked - random.randint(10, 20)
+            walker_spawn_location = self.player.get_transform().location + carla.Location(x=walker_lane_offset, y=walker_offset_y, z=3)
+            walker_transform = carla.Transform(walker_spawn_location, carla.Rotation(0, 90, 0))
+            walker_bp = random.choice(self.blueprint_library.filter('*walker.*'))
+            self.walker = self.world.try_spawn_actor(walker_bp, walker_transform)
+            if self.walker is not None:
+                self.walker.apply_control(carla.WalkerControl(
+                    direction=carla.Vector3D(x=random.uniform(0.3, 0.5), y=random.uniform(-1, 1), z=0),
+                    speed=1))
+                walker_spawned = True
+            else:
+                walker_attempts += 1
+                print(f"Attempt {walker_attempts} failed for walker.")
+        if not walker_spawned:
+            print("Could not spawn walker without collision.")
         self.world.tick()
 
         # SPECTATOR
@@ -573,3 +684,4 @@ class World(gym.Env):
 
         self.save_list.append([self.episode_counter,  self.desired_speed, self.last_v, self.ttc_trigger, self.distance_parked, self.clock.get_time(), current_x, current_y, current_speed, current_acceleration, 
                                acceleration_vec.x, acceleration_vec.y, sideslip, current_yaw, current_steer])
+
